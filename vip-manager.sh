@@ -379,6 +379,11 @@ show_menu() {
     echo -e "16) Firewall status"
     echo -e "17) Install services"
     echo -e "18) Exit"
+    echo -e "19) Advanced monitoring"
+    echo -e "20) Firewall configuration"
+    echo -e "21) SSL certificate setup"
+    echo -e "22) User management"
+    echo -e "23) System maintenance"
     echo -e "${BLUE}========================================${NC}"
 }
 
@@ -471,6 +476,16 @@ while true; do
         17) install_services
             read -p "Press Enter to continue..." ;;
         18) echo "Exiting..."; break ;;
+        19) sudo "$SCRIPTS_DIR/monitor.sh"
+‎    read -p "Press Enter to continue..." ;;
+        20) sudo "$SCRIPTS_DIR/firewall.sh"
+‎    read -p "Press Enter to continue..." ;;
+        21) sudo "$SCRIPTS_DIR/ssl-setup.sh"
+‎    read -p "Press Enter to continue..." ;;
+        22) sudo "$SCRIPTS_DIR/user-manager.sh"
+‎    read -p "Press Enter to continue..." ;;
+        23) sudo "$SCRIPTS_DIR/maintenance.sh"
+‎    read -p "Press Enter to continue..." ;;
         *) print_status "ERROR" "Invalid option!"
            sleep 1 ;;
     esac
