@@ -1,0 +1,48 @@
+# VIP-Autoscript Log Rotation Configuration
+# Rotates logs daily and keeps 7 days of history
+
+/var/log/xray/access.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 0640 nobody adm
+    postrotate
+        systemctl kill -s USR1 xray.service >/dev/null 2>&1 || true
+    endscript
+}
+
+/var/log/xray/error.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 0640 nobody adm
+    postrotate
+        systemctl kill -s USR1 xray.service >/dev/null 2>&1 || true
+    endscript
+}
+
+/var/log/vip-firewall.log {
+    daily
+    missingok
+    rotate 30
+    compress
+    delaycompress
+    notifempty
+    create 0640 root adm
+}
+
+/etc/vip-autoscript/logs/*.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 0640 root adm
+}
