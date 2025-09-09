@@ -563,4 +563,201 @@ perform_weekly_maintenance() {
 
 # Function to perform monthly maintenance
 perform_monthly_maintenance() {
-    print_status "MAINT"
+    print_status "MAINT" "Starting monthly maintenance..."
+    log_message "MONTHLY" "Starting monthly maintenance routine"
+    
+    # Comprehensive cleanup
+    cleanup_logs true
+    cleanup_backups
+    
+    # Full system update
+    system_update
+    
+    # Comprehensive checks
+    check_disk_health
+    verify_configurations
+    check_resource_usage
+    
+    # Database optimization
+    optimize_databases
+    
+    # System optimization
+    optimize_system
+    
+    # Create comprehensive report
+    local report_file=$(create_maintenance_report "monthly")
+    
+    # Archive old reports (keep only last 3 months)
+    find "$REPORT_DIR" -name "maintenance_*.log" -mtime +90 -delete 2>/dev/null
+    
+    log_message "MONTHLY" "Monthly maintenance completed. Report: $report_file"
+}
+
+# Function to show maintenance menu
+show_maintenance_menu() {
+    clear
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE}      VIP-Autoscript Maintenance        ${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "1)  Run daily maintenance"
+    echo -e "2)  Run weekly maintenance"
+    echo -e "3)  Run monthly maintenance"
+    echo -e "4)  Cleanup logs and temp files"
+    echo -e "5)  Update system packages"
+    echo -e "6)  Check disk health"
+    echo -e "7)  Verify configurations"
+    echo -e "8)  Optimize system"
+    echo -e "9)  Check resource usage"
+    echo -e "10) Generate maintenance report"
+    echo -e "11) Setup automated maintenance"
+    echo -e "12) View maintenance log"
+    echo -e "13) Back to main menu"
+    echo -e "${BLUE}========================================${NC}"
+}
+
+# Main maintenance function
+main_maintenance() {
+    check_root
+    
+    local option=$1
+    
+    case $option in
+        "--daily")
+            perform_daily_maintenance
+            ;;
+        "--weekly")
+            perform_weekly_maintenance
+            ;;
+        "--monthly")
+            perform_monthly_maintenance
+            ;;
+        "--cleanup")
+            cleanup_logs true
+            ;;
+        "--update")
+            system_update
+            ;;
+        "--diskcheck")
+            check_disk_health
+            ;;
+        "--verify")
+            verify_configurations
+            ;;
+        "--optimize")
+            optimize_system
+            ;;
+        "--report")
+            create_maintenance_report "manual"
+            ;;
+        "--auto")
+            setup_automated_maintenance
+            ;;
+        *)
+            while true; do
+                show_maintenance_menu
+                read -p "Choose an option: " choice
+                
+                case $choice in
+                    1) perform_daily_maintenance
+                       read -p "Press Enter to continue..." ;;
+                    2) perform_weekly_maintenance
+                       read -p "Press Enter to continue..." ;;
+                    3) perform_monthly_maintenance
+                       read -p "Press Enter to continue..." ;;
+                    4) cleanup_logs true
+                       read -p "Press Enter to continue..." ;;
+                    5) system_update
+                       read -p "Press Enter to continue..." ;;
+                    6) check_disk_health
+                       read -p "Press Enter to continue..." ;;
+                    7) verify_configurations
+                       read -p "Press Enter to continue..." ;;
+                    8) optimize_system
+                       read -p "Press Enter to continue..." ;;
+                    9) check_resource_usage
+                       read -p "Press Enter to continue..." ;;
+                    10) create_maintenance_report "manual"
+                        read -p "Press Enter to continue..." ;;
+                    11) setup_automated_maintenance
+                        read -p "Press Enter to continue..." ;;
+                    12) echo -e "\n${CYAN}===== Maintenance Log =====${NC}"
+                        tail -20 "$MAINTENANCE_LOG" 2>/dev/null || echo "No maintenance log found"
+                        echo -e "${CYAN}===========================${NC}"
+                        read -p "Press Enter to continue..." ;;
+                    13) break ;;
+                    *) print_status "ERROR" "Invalid option!"
+                       sleep 1 ;;
+                esac
+            done
+            ;;
+    esac
+}
+
+# Parse command line arguments
+if [ $# -gt 0 ]; then
+    case $1 in
+        -d|--daily)
+            main_maintenance "--daily"
+            exit 0
+            ;;
+        -w|--weekly)
+            main_maintenance "--weekly"
+            exit 0
+            ;;
+        -m|--monthly)
+            main_maintenance "--monthly"
+            exit 0
+            ;;
+        -c|--cleanup)
+            main_maintenance "--cleanup"
+            exit 0
+            ;;
+        -u|--update)
+            main_maintenance "--update"
+            exit 0
+            ;;
+        -D|--diskcheck)
+            main_maintenance "--diskcheck"
+            exit 0
+            ;;
+        -v|--verify)
+            main_maintenance "--verify"
+            exit 0
+            ;;
+        -o|--optimize)
+            main_maintenance "--optimize"
+            exit 0
+            ;;
+        -r|--report)
+            main_maintenance "--report"
+            exit 0
+            ;;
+        -a|--auto)
+            main_maintenance "--auto"
+            exit 0
+            ;;
+        -l|--log)
+            tail -f "$MAINTENANCE_LOG"
+            exit 0
+            ;;
+        *)
+            echo "Usage: $0 [options]"
+            echo "Options:"
+            echo "  -d, --daily       Run daily maintenance tasks"
+            echo "  -w, --weekly      Run weekly maintenance tasks"
+            echo "  -m, --monthly     Run monthly maintenance tasks"
+            echo "  -c, --cleanup     Cleanup logs and temporary files"
+            echo "  -u, --update      Update system packages"
+            echo "  -D, --diskcheck   Check disk health"
+            echo "  -v, --verify      Verify configuration files"
+            echo "  -o, --optimize    Optimize system performance"
+            echo "  -r, --report      Generate maintenance report"
+            echo "  -a, --auto        Setup automated maintenance"
+            echo "  -l, --log         View maintenance log"
+            exit 1
+            ;;
+    esac
+else
+    # Start interactive mode if no arguments provided
+    main_maintenance
+fi
