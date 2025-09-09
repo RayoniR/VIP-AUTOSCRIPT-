@@ -384,6 +384,7 @@ show_menu() {
     echo -e "21) SSL certificate setup"
     echo -e "22) User management"
     echo -e "23) System maintenance"
+    echo -e "24)  Advanced AI Maintenance"
     echo -e "${BLUE}========================================${NC}"
 }
 
@@ -485,6 +486,8 @@ while true; do
         22) sudo "$SCRIPTS_DIR/user-manager.sh"
 ‎    read -p "Press Enter to continue..." ;;
         23) sudo "$SCRIPTS_DIR/maintenance.sh"
+‎    read -p "Press Enter to continue..." ;;
+        24) sudo "$SCRIPTS_DIR/advance-maintenance.sh"
 ‎    read -p "Press Enter to continue..." ;;
         *) print_status "ERROR" "Invalid option!"
            sleep 1 ;;
