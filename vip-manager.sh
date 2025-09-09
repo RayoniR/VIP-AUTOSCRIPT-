@@ -1,4 +1,4 @@
-#!/bin/bash
+I-9#!/bin/bash
 
 # VIP-Autoscript Manager - Production Ready
 # Complete service management with monitoring, logging, and backup
@@ -385,7 +385,8 @@ show_menu() {
     echo -e "22) User management"
     echo -e "23) System maintenance"
     echo -e "24)  Advanced AI Maintenance"
-    echo "25) Domain Management"
+    echo -e "25) Domain Management"
+    echo -e "26) user panel" 
     echo -e "${BLUE}========================================${NC}"
 }
 
@@ -491,6 +492,8 @@ while true; do
         24) sudo "$SCRIPTS_DIR/advance-maintenance.sh"
 ‎    read -p "Press Enter to continue..." ;;
         25) sudo "$SCRIPTS_DIR/domain-manager.sh"
+‎   read -p "Press Enter to continue..." ;;
+        26) sudo "$SCRIPTS_DIR/user-panel.sh"
 ‎   read -p "Press Enter to continue..." ;;
         *) print_status "ERROR" "Invalid option!"
            sleep 1 ;;
