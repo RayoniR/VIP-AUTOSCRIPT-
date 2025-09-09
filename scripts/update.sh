@@ -7,16 +7,16 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # Configuration
-readonly CONFIG_DIR="/etc/vip-autoscript/config"
-readonly BACKUP_DIR="/etc/vip-autoscript/backups"
-readonly LOG_DIR="/etc/vip-autoscript/logs"
+readonly CONFIG_DIR="/etc/vip-autoscript-/config"
+readonly BACKUP_DIR="/etc/vip-autoscript-/backups"
+readonly LOG_DIR="/etc/vip-autoscript-/logs"
 readonly LOCK_DIR="/tmp/vip-update"
 readonly UPDATE_LOG="$LOG_DIR/update.log"
 readonly VERSION_FILE="/etc/vip-autoscript/version"
-readonly REPO_URL="https://github.com/yourusername/vip-autoscript.git"
+readonly REPO_URL="https://github.com/RayoniR/VIP-AUTOSCRIPT-.git"
 readonly REPO_DIR="/tmp/vip-autoscript-repo"
 readonly GPG_KEY_ID="YOUR-GPG-KEY-ID"
-readonly GPG_PUBKEY="/etc/vip-autoscript/keys/pubkey.asc"
+readonly GPG_PUBKEY="/etc/vip-autoscript-/keys/pubkey.asc"
 
 # Service management
 readonly SERVICES=("xray" "badvpn" "sshws" "slowdns")
@@ -335,8 +335,8 @@ apply_updates() {
     
     # Update main scripts
     if [[ -d "$update_dir/scripts" ]]; then
-        cp -r "$update_dir/scripts"/* "/etc/vip-autoscript/scripts/"
-        chmod +x /etc/vip-autoscript/scripts/*.sh
+        cp -r "$update_dir/scripts"/* "/etc/vip-autoscript-/scripts/"
+        chmod +x /etc/vip-autoscript-/scripts/*.sh
     fi
 
     # Update configurations
@@ -460,7 +460,7 @@ check_for_updates() {
 }
 
 get_latest_version() {
-    local version_url="https://api.github.com/repos/yourusername/vip-autoscript/releases/latest"
+    local version_url="https://api.github.com/repos/RayoniR/VIP-AUTOSCRIPT-/releases/latest"
     
     if curl -s "$version_url" | jq -r '.tag_name'; then
         return 0
