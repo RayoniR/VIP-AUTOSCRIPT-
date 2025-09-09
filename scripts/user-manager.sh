@@ -1,655 +1,431 @@
 #!/bin/bash
 
-# VIP-Autoscript User Account Management with Expiry
-# Complete user management with automatic expiry and cleanup
-
-set -euo pipefail
-IFS=$'\n\t'
+# VIP-Autoscript User Management
+# Manages users for various services
 
 # Configuration
-readonly CONFIG_DIR="/etc/vip-autoscript/config"
-readonly USER_DIR="/etc/vip-autoscript/users"
-readonly LOG_DIR="/etc/vip-autoscript/logs"
-readonly BACKUP_DIR="/etc/vip-autoscript/backups"
-readonly LOCK_DIR="/tmp/vip-users"
-readonly USER_DB="$USER_DIR/users.json"
-readonly EXPIRY_LOG="$LOG_DIR/expiry.log"
-readonly CRON_JOB="/etc/cron.d/vip-user-expiry"
-
-# Service configurations
-readonly SERVICES=("ssh" "xray" "badvpn" "slowdns")
-readonly SSH_CONFIG="/etc/ssh/sshd_config"
-readonly SSH_USER_DIR="/home"
-readonly XRAY_CONFIG="$CONFIG_DIR/xray.json"
+CONFIG_DIR="/etc/vip-autoscript/config"
+BACKUP_DIR="/etc/vip-autoscript/backups"
+USER_DB="$CONFIG_DIR/users.json"
 
 # Colors for output
-readonly RED='\033[0;31m'
-readonly GREEN='\033[0;32m'
-readonly YELLOW='\033[1;33m'
-readonly BLUE='\033[0;34m'
-readonly NC='\033[0m'
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-# Initialize system
-init_system() {
-    mkdir -p "$USER_DIR" "$LOG_DIR" "$BACKUP_DIR" "$LOCK_DIR"
-    setup_logging
-    setup_traps
-    init_database
-    setup_cron
-}
-
-# Setup logging
-setup_logging() {
-    exec 3>>"$EXPIRY_LOG"
-}
-
-setup_traps() {
-    trap 'cleanup_lock; exit' INT TERM EXIT
-}
-
-# Database management
-init_database() {
-    if [[ ! -f "$USER_DB" ]]; then
-        cat > "$USER_DB" << EOF
-{
-    "version": "1.0.0",
-    "users": {},
-    "metadata": {
-        "created": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-        "last_modified": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-        "total_users": 0,
-        "active_users": 0,
-        "expired_users": 0
-    },
-    "settings": {
-        "default_expiry_days": 30,
-        "auto_cleanup": true,
-        "notify_before_expiry": true,
-        "notify_days_before": 7,
-        "backup_before_delete": true
-    }
-}
-EOF
-    fi
-}
-
-# Setup cron job for expiry checking
-setup_cron() {
-    if [[ ! -f "$CRON_JOB" ]]; then
-        cat > "$CRON_JOB" << EOF
-# VIP User Expiry Management
-# Check for expired users every hour
-0 * * * * root /etc/vip-autoscript/scripts/user-manager.sh check-expiry
-# Daily cleanup at 2 AM
-0 2 * * * root /etc/vip-autoscript/scripts/user-manager.sh cleanup-expired
-# Backup user database every Sunday
-0 3 * * 0 root /etc/vip-autoscript/scripts/user-manager.sh backup
-EOF
-        chmod 644 "$CRON_JOB"
-    fi
-}
-
-# Locking mechanism
-acquire_lock() {
-    local lock_file="$LOCK_DIR/user.lock"
-    if ! mkdir "$lock_file" 2>/dev/null; then
-        log_error "Could not acquire lock. Another operation may be in progress."
-        exit 1
-    fi
-    echo $$ > "$lock_file/pid"
-}
-
-cleanup_lock() {
-    rm -rf "$LOCK_DIR/user.lock"
-}
-
-# User creation with expiry
-create_user() {
-    local username="$1"
-    local service="$2"
-    local expiry_days="${3:-30}"
+# Function to print status
+print_status() {
+    local status=$1
+    local message=$2
     
-    acquire_lock
-    
-    if ! validate_username "$username"; then
-        return 1
-    fi
-
-    if user_exists "$username"; then
-        log_error "User already exists: $username"
-        return 1
-    fi
-
-    local expiry_date=$(calculate_expiry_date "$expiry_days")
-    local user_config=$(build_user_config "$username" "$service" "$expiry_date")
-    
-    case "$service" in
-        "ssh")
-            create_ssh_user "$username" "$expiry_date"
-            ;;
-        "xray")
-            create_xray_user "$username" "$expiry_date"
-            ;;
-        "both")
-            create_ssh_user "$username" "$expiry_date"
-            create_xray_user "$username" "$expiry_date"
-            ;;
-        *)
-            log_error "Unknown service: $service"
-            return 1
-            ;;
+    case $status in
+        "SUCCESS") echo -e "${GREEN}[SUCCESS]${NC} $message" ;;
+        "ERROR") echo -e "${RED}[ERROR]${NC} $message" ;;
+        "WARNING") echo -e "${YELLOW}[WARNING]${NC} $message" ;;
+        "INFO") echo -e "${BLUE}[INFO]${NC} $message" ;;
+        *) echo -e "[$status] $message" ;;
     esac
-
-    if ! update_database "$username" "$user_config"; then
-        log_error "Failed to update database for user: $username"
-        rollback_user_creation "$username" "$service"
-        return 1
-    fi
-
-    log_audit "USER_CREATE" "Created user: $username" "$user_config"
-    print_success "User created successfully: $username (Expires: $expiry_date)"
-    
-    cleanup_lock
-    return 0
 }
 
-# Create SSH user with expiry
-create_ssh_user() {
-    local username="$1"
-    local expiry_date="$2"
-    
-    # Generate secure random password
-    local password=$(generate_password)
-    
-    # Create user account
-    if ! useradd -m -s /bin/bash "$username"; then
-        log_error "Failed to create system user: $username"
-        return 1
-    fi
-    
-    # Set password
-    echo "$username:$password" | chpasswd
-    
-    # Set account expiry
-    chage -E "$(date -d "$expiry_date" +%Y-%m-%d)" "$username"
-    
-    # Configure SSH restrictions
-    configure_ssh_restrictions "$username"
-    
-    print_info "SSH User: $username, Password: $password"
-}
-
-# Create Xray user with expiry
-create_xray_user() {
-    local username="$1"
-    local expiry_date="$2"
-    local uuid=$(generate_uuid)
-    
-    if [[ ! -f "$XRAY_CONFIG" ]]; then
-        log_error "Xray configuration not found"
-        return 1
-    fi
-
-    # Backup current config
-    cp "$XRAY_CONFIG" "$XRAY_CONFIG.backup.$(date +%Y%m%d_%H%M%S)"
-    
-    # Add user to Xray config
-    jq --arg username "$username" --arg uuid "$uuid" --arg expiry "$expiry_date" \
-        '.inbounds[0].settings.clients += [{
-            "id": $uuid,
-            "email": $username,
-            "expiry": $expiry,
-            "level": 0,
-            "flow": "xtls-rprx-direct"
-        }]' "$XRAY_CONFIG" > "$XRAY_CONFIG.tmp"
-    
-    if [[ $? -eq 0 ]]; then
-        mv "$XRAY_CONFIG.tmp" "$XRAY_CONFIG"
-        
-        # Restart Xray service
-        if systemctl is-active --quiet xray; then
-            systemctl restart xray
-        fi
-        
-        print_info "Xray User: $username, UUID: $uuid, Expiry: $expiry_date"
-    else
-        log_error "Failed to add user to Xray configuration"
-        return 1
+# Function to initialize user database
+init_user_db() {
+    if [ ! -f "$USER_DB" ]; then
+        echo '{"xray": {}, "ssh": {}, "badvpn": {}}' > "$USER_DB"
+        print_status "INFO" "User database initialized: $USER_DB"
     fi
 }
 
-# Check for expired users
-check_expiry() {
-    acquire_lock
-    
-    local current_date=$(date +%Y-%m-%d)
-    local expired_users=()
-    
-    while read -r user; do
-        local expiry_date=$(jq -r ".users[\"$user\"].expiry_date" "$USER_DB")
-        
-        if [[ "$expiry_date" != "never" && "$(date -d "$expiry_date" +%Y%m%d)" -lt "$(date -d "$current_date" +%Y%m%d)" ]]; then
-            expired_users+=("$user")
-            disable_user "$user"
-        fi
-    done < <(jq -r '.users | keys[]' "$USER_DB")
-    
-    if [[ ${#expired_users[@]} -gt 0 ]]; then
-        log_audit "USERS_EXPIRED" "Found expired users" "$(printf '%s\n' "${expired_users[@]}")"
-        print_info "Found ${#expired_users[@]} expired users"
-    fi
-    
-    cleanup_lock
-}
-
-# Cleanup expired users
-cleanup_expired() {
-    acquire_lock
-    
-    local current_date=$(date +%Y-%m-%d)
-    local cleaned_users=()
-    
-    while read -r user; do
-        local expiry_date=$(jq -r ".users[\"$user\"].expiry_date" "$USER_DB")
-        local services=$(jq -r ".users[\"$user\"].services | join(\",\")" "$USER_DB")
-        
-        if [[ "$expiry_date" != "never" && "$(date -d "$expiry_date" +%Y%m%d)" -lt "$(date -d "$current_date" +%Y%m%d)" ]]; then
-            if delete_user "$user" "$services"; then
-                cleaned_users+=("$user")
-            fi
-        fi
-    done < <(jq -r '.users | keys[]' "$USER_DB")
-    
-    if [[ ${#cleaned_users[@]} -gt 0 ]]; then
-        log_audit "USERS_CLEANED" "Cleaned expired users" "$(printf '%s\n' "${cleaned_users[@]}")"
-        print_info "Cleaned ${#cleaned_users[@]} expired users"
-    fi
-    
-    cleanup_lock
-}
-
-# Delete user completely
-delete_user() {
-    local username="$1"
-    local services="$2"
-    
-    # Remove from services
-    if [[ "$services" == *"ssh"* ]]; then
-        delete_ssh_user "$username"
-    fi
-    
-    if [[ "$services" == *"xray"* ]]; then
-        delete_xray_user "$username"
-    fi
-    
-    # Remove from database
-    jq --arg username "$username" 'del(.users[$username])' "$USER_DB" > "$USER_DB.tmp"
-    mv "$USER_DB.tmp" "$USER_DB"
-    
-    log_audit "USER_DELETED" "Deleted user: $username" "{\"services\": \"$services\"}"
-    return 0
-}
-
-# Delete SSH user
-delete_ssh_user() {
-    local username="$1"
-    
-    # Kill user processes
-    pkill -u "$username" 2>/dev/null || true
-    
-    # Remove user account
-    userdel -r "$username" 2>/dev/null || true
-    
-    # Remove from SSH config if any
-    sed -i "/^Match User $username$/,/^$/d" "$SSH_CONFIG" 2>/dev/null || true
-}
-
-# Delete Xray user
-delete_xray_user() {
-    local username="$1"
-    
-    if [[ ! -f "$XRAY_CONFIG" ]]; then
-        return 1
-    fi
-
-    # Backup current config
-    cp "$XRAY_CONFIG" "$XRAY_CONFIG.backup.$(date +%Y%m%d_%H%M%S)"
-    
-    # Remove user from Xray config
-    jq --arg username "$username" \
-        'del(.inbounds[0].settings.clients[] | select(.email == $username))' \
-        "$XRAY_CONFIG" > "$XRAY_CONFIG.tmp"
-    
-    if [[ $? -eq 0 ]]; then
-        mv "$XRAY_CONFIG.tmp" "$XRAY_CONFIG"
-        
-        # Restart Xray service
-        if systemctl is-active --quiet xray; then
-            systemctl restart xray
-        fi
-    else
-        log_error "Failed to remove user from Xray configuration: $username"
-        return 1
-    fi
-}
-
-# Disable user (mark as expired but don't delete)
-disable_user() {
-    local username="$1"
-    
-    # Disable SSH access
-    if id "$username" &>/dev/null; then
-        usermod -L "$username" 2>/dev/null || true
-        chage -E 1 "$username" 2>/dev/null || true
-    fi
-    
-    # Update database
-    jq --arg username "$username" \
-        '.users[$username].enabled = false | 
-         .users[$username].status = "expired"' \
-        "$USER_DB" > "$USER_DB.tmp"
-    
-    mv "$USER_DB.tmp" "$USER_DB"
-    
-    log_audit "USER_DISABLED" "Disabled expired user: $username"
-}
-
-# Update user expiry
-update_expiry() {
-    local username="$1"
-    local expiry_days="$2"
-    
-    acquire_lock
-    
-    if ! user_exists "$username"; then
-        log_error "User does not exist: $username"
-        return 1
-    fi
-
-    local expiry_date=$(calculate_expiry_date "$expiry_days")
-    
-    # Update SSH account expiry
-    if id "$username" &>/dev/null; then
-        chage -E "$(date -d "$expiry_date" +%Y-%m-%d)" "$username"
-    fi
-    
-    # Update Xray configuration
-    if [[ -f "$XRAY_CONFIG" ]]; then
-        jq --arg username "$username" --arg expiry "$expiry_date" \
-            '(.inbounds[0].settings.clients[] | select(.email == $username)).expiry = $expiry' \
-            "$XRAY_CONFIG" > "$XRAY_CONFIG.tmp"
-        
-        if [[ $? -eq 0 ]]; then
-            mv "$XRAY_CONFIG.tmp" "$XRAY_CONFIG"
-            
-            # Restart Xray service
-            if systemctl is-active --quiet xray; then
-                systemctl restart xray
-            fi
-        fi
-    fi
-    
-    # Update database
-    jq --arg username "$username" --arg expiry_date "$expiry_date" \
-        '.users[$username].expiry_date = $expiry_date |
-         .users[$username].status = "active"' \
-        "$USER_DB" > "$USER_DB.tmp"
-    
-    mv "$USER_DB.tmp" "$USER_DB"
-    
-    log_audit "EXPIRY_UPDATED" "Updated user expiry: $username" "{\"new_expiry\": \"$expiry_date\"}"
-    print_success "Updated expiry for $username: $expiry_date"
-    
-    cleanup_lock
-    return 0
-}
-
-# Utility functions
-validate_username() {
-    local username="$1"
-    
-    # Username validation rules
-    if [[ ! "$username" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
-        log_error "Invalid username format: $username"
-        return 1
-    fi
-    
-    if [[ "$username" == "root" || "$username" == "admin" ]]; then
-        log_error "Cannot use reserved username: $username"
-        return 1
-    fi
-    
-    return 0
-}
-
-user_exists() {
-    local username="$1"
-    jq -e ".users[\"$username\"]" "$USER_DB" >/dev/null 2>&1
-}
-
-calculate_expiry_date() {
-    local days="$1"
-    if [[ "$days" == "never" ]]; then
-        echo "never"
-    else
-        date -d "+$days days" +%Y-%m-%d
-    fi
-}
-
-generate_password() {
-    tr -dc 'A-Za-z0-9!@#$%^&*()' < /dev/urandom | head -c 16
-}
-
+# Function to generate UUID
 generate_uuid() {
     cat /proc/sys/kernel/random/uuid
 }
 
-configure_ssh_restrictions() {
-    local username="$1"
+# Function to add Xray user
+add_xray_user() {
+    local email=$1
+    local level=${2:-0}
+    local uuid=$(generate_uuid)
     
-    # Add SSH configuration restrictions
-    cat >> "$SSH_CONFIG" << EOF
-
-# Restrictions for user $username
-Match User $username
-    PasswordAuthentication yes
-    PermitTTY no
-    X11Forwarding no
-    AllowTcpForwarding yes
-    PermitTunnel yes
-    AllowAgentForwarding no
-EOF
+    if [ -z "$email" ]; then
+        print_status "ERROR" "Email is required for Xray user"
+        return 1
+    fi
     
-    # Reload SSH service
-    systemctl reload ssh
-}
-
-build_user_config() {
-    local username="$1"
-    local service="$2"
-    local expiry_date="$3"
+    # Add user to Xray config
+    jq --arg email "$email" --arg uuid "$uuid" --argjson level $level \
+        '.inbounds[0].settings.clients += [{"id": $uuid, "email": $email, "level": $level}]' \
+        "$CONFIG_DIR/xray.json" > "$CONFIG_DIR/xray.json.tmp" \
+        && mv "$CONFIG_DIR/xray.json.tmp" "$CONFIG_DIR/xray.json"
     
-    cat << EOF
-{
-    "username": "$username",
-    "created": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-    "expiry_date": "$expiry_date",
-    "status": "active",
-    "enabled": true,
-    "services": ["$service"],
-    "last_modified": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-}
-EOF
-}
-
-update_database() {
-    local username="$1"
-    local config="$2"
-    
-    local temp_db="$USER_DB.tmp"
-    
-    jq --arg username "$username" --argjson config "$config" \
-        '.users[$username] = $config |
-         .metadata.last_modified = "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'" |
-         .metadata.total_users = (.users | length) |
-         .metadata.active_users = (.users | to_entries | map(select(.value.enabled == true)) | length)' \
-        "$USER_DB" > "$temp_db"
-    
-    if jq -e . >/dev/null 2>&1 < "$temp_db"; then
-        mv "$temp_db" "$USER_DB"
-        return 0
+    if [ $? -eq 0 ]; then
+        # Add to user database
+        jq --arg email "$email" --arg uuid "$uuid" --argjson level $level \
+            '.xray[$email] = {"uuid": $uuid, "level": $level, "created": "'$(date +%Y-%m-%d)'"}' \
+            "$USER_DB" > "$USER_DB.tmp" && mv "$USER_DB.tmp" "$USER_DB"
+        
+        print_status "SUCCESS" "Xray user added: $email"
+        echo "UUID: $uuid"
+        restart_xray
     else
-        rm -f "$temp_db"
+        print_status "ERROR" "Failed to add Xray user"
         return 1
     fi
 }
 
-# Logging functions
-log_audit() {
-    local action="$1"
-    local message="$2"
-    local data="${3:-}"
+# Function to remove Xray user
+remove_xray_user() {
+    local email=$1
     
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $action: $message - $data" >&3
-}
-
-log_error() {
-    local message="$1"
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - ERROR: $message" >&2
-}
-
-print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
-}
-
-print_info() {
-    echo -e "${BLUE}ℹ $1${NC}"
-}
-
-# Backup and restore
-backup_database() {
-    local backup_file="$BACKUP_DIR/user-db-$(date +%Y%m%d_%H%M%S).json"
-    cp "$USER_DB" "$backup_file"
-    gzip "$backup_file"
-    print_success "Database backed up: ${backup_file}.gz"
-}
-
-restore_database() {
-    local backup_file="$1"
-    if [[ ! -f "$backup_file" ]]; then
-        log_error "Backup file not found: $backup_file"
+    if [ -z "$email" ]; then
+        print_status "ERROR" "Email is required to remove Xray user"
         return 1
     fi
     
-    if gunzip -c "$backup_file" | jq -e . >/dev/null 2>&1; then
-        gunzip -c "$backup_file" > "$USER_DB"
-        print_success "Database restored from: $backup_file"
-        return 0
+    # Remove user from Xray config
+    jq --arg email "$email" \
+        'del(.inbounds[0].settings.clients[] | select(.email == $email))' \
+        "$CONFIG_DIR/xray.json" > "$CONFIG_DIR/xray.json.tmp" \
+        && mv "$CONFIG_DIR/xray.json.tmp" "$CONFIG_DIR/xray.json"
+    
+    if [ $? -eq 0 ]; then
+        # Remove from user database
+        jq --arg email "$email" 'del(.xray[$email])' \
+            "$USER_DB" > "$USER_DB.tmp" && mv "$USER_DB.tmp" "$USER_DB"
+        
+        print_status "SUCCESS" "Xray user removed: $email"
+        restart_xray
     else
-        log_error "Invalid backup file: $backup_file"
+        print_status "ERROR" "Failed to remove Xray user"
         return 1
     fi
 }
 
-# List users with expiry info
-list_users() {
-    echo -e "\n${BLUE}===== User Accounts =====${NC}"
-    jq -r '.users | to_entries[] | 
-        "\(.key): \(.value.status) | Expires: \(.value.expiry_date) | Services: \(.value.services | join(\", \"))"' \
-        "$USER_DB"
-    echo -e "${BLUE}=========================${NC}"
+# Function to list Xray users
+list_xray_users() {
+    echo -e "\n${BLUE}===== Xray Users =====${NC}"
+    jq -r '.xray | to_entries[] | "Email: \(.key), UUID: \(.value.uuid), Level: \(.value.level), Created: \(.value.created)"' "$USER_DB"
+    echo -e "${BLUE}=====================${NC}"
 }
 
-# Show user details
-show_user() {
-    local username="$1"
+# Function to restart Xray service
+restart_xray() {
+    print_status "INFO" "Restarting Xray service..."
+    systemctl restart xray
+    sleep 2
     
-    if ! user_exists "$username"; then
-        log_error "User does not exist: $username"
+    if systemctl is-active --quiet xray; then
+        print_status "SUCCESS" "Xray service restarted successfully"
+    else
+        print_status "ERROR" "Failed to restart Xray service"
+        return 1
+    fi
+}
+
+# Function to add SSH user
+add_ssh_user() {
+    local username=$1
+    local password=$2
+    
+    if [ -z "$username" ] || [ -z "$password" ]; then
+        print_status "ERROR" "Username and password are required for SSH user"
         return 1
     fi
     
-    echo -e "\n${BLUE}===== User Details: $username =====${NC}"
-    jq -r ".users[\"$username\"]" "$USER_DB"
-    echo -e "${BLUE}===============================${NC}"
+    # Create SSH user
+    useradd -m -s /bin/bash "$username"
+    echo "$username:$password" | chpasswd
+    
+    if [ $? -eq 0 ]; then
+        # Add to user database
+        jq --arg username "$username" \
+            --arg created "$(date +%Y-%m-%d)" \
+            '.ssh[$username] = {"created": $created, "last_login": "never"}' \
+            "$USER_DB" > "$USER_DB.tmp" && mv "$USER_DB.tmp" "$USER_DB"
+        
+        print_status "SUCCESS" "SSH user added: $username"
+    else
+        print_status "ERROR" "Failed to add SSH user"
+        return 1
+    fi
 }
 
-# Main execution
-main() {
-    init_system
+# Function to remove SSH user
+remove_ssh_user() {
+    local username=$1
     
-    local action="${1:-}"
-    local username="${2:-}"
-    local service="${3:-}"
-    local expiry_days="${4:-}"
+    if [ -z "$username" ]; then
+        print_status "ERROR" "Username is required to remove SSH user"
+        return 1
+    fi
     
-    case "$action" in
-        "create")
-            create_user "$username" "$service" "$expiry_days"
+    # Remove SSH user
+    userdel -r "$username" 2>/dev/null
+    
+    # Remove from user database
+    jq --arg username "$username" 'del(.ssh[$username])' \
+        "$USER_DB" > "$USER_DB.tmp" && mv "$USER_DB.tmp" "$USER_DB"
+    
+    print_status "SUCCESS" "SSH user removed: $username"
+}
+
+# Function to list SSH users
+list_ssh_users() {
+    echo -e "\n${BLUE}===== SSH Users =====${NC}"
+    jq -r '.ssh | to_entries[] | "Username: \(.key), Created: \(.value.created), Last Login: \(.value.last_login)"' "$USER_DB"
+    echo -e "${BLUE}====================${NC}"
+}
+
+# Function to generate user configuration
+generate_user_config() {
+    local email=$1
+    local protocol=${2:-"vless"}
+    
+    if [ -z "$email" ]; then
+        print_status "ERROR" "Email is required to generate configuration"
+        return 1
+    fi
+    
+    local user_data=$(jq -r ".xray[\"$email\"]" "$USER_DB")
+    if [ "$user_data" = "null" ]; then
+        print_status "ERROR" "User not found: $email"
+        return 1
+    fi
+    
+    local uuid=$(echo "$user_data" | jq -r '.uuid')
+    local server_ip=$(curl -s https://api.ipify.org)
+    
+    echo -e "\n${BLUE}===== User Configuration: $email =====${NC}"
+    
+    case $protocol in
+        "vless")
+            echo "Protocol: VLESS + XTLS"
+            echo "Server: $server_ip"
+            echo "Port: 443"
+            echo "User ID: $uuid"
+            echo "Flow: xtls-rprx-direct"
+            echo "Encryption: none"
+            echo "Transport: tcp"
+            echo "TLS: true"
+            echo "SNI: $server_ip"
             ;;
-        "delete")
-            delete_user "$username" "$(jq -r ".users[\"$username\"].services | join(\",\")" "$USER_DB")"
-            ;;
-        "update-expiry")
-            update_expiry "$username" "$expiry_days"
-            ;;
-        "check-expiry")
-            check_expiry
-            ;;
-        "cleanup-expired")
-            cleanup_expired
-            ;;
-        "list")
-            list_users
-            ;;
-        "show")
-            show_user "$username"
-            ;;
-        "backup")
-            backup_database
-            ;;
-        "restore")
-            restore_database "$username"
-            ;;
-        "disable")
-            disable_user "$username"
+        "vmess")
+            echo "Protocol: VMESS"
+            echo "Server: $server_ip"
+            echo "Port: 80"
+            echo "User ID: $uuid"
+            echo "Alter ID: 0"
+            echo "Security: auto"
+            echo "Transport: tcp"
+            echo "TLS: false"
             ;;
         *)
-            show_usage
-            exit 1
+            print_status "ERROR" "Unknown protocol: $protocol"
+            return 1
+            ;;
+    esac
+    
+    echo -e "${BLUE}======================================${NC}"
+}
+
+# Function to show user menu
+show_user_menu() {
+    clear
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE}         VIP-Autoscript User Manager    ${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "1)  Add Xray user"
+    echo -e "2)  Remove Xray user"
+    echo -e "3)  List Xray users"
+    echo -e "4)  Add SSH user"
+    echo -e "5)  Remove SSH user"
+    echo -e "6)  List SSH users"
+    echo -e "7)  Generate user config"
+    echo -e "8)  Backup user database"
+    echo -e "9)  Restore user database"
+    echo -e "10) Back to main menu"
+    echo -e "${BLUE}========================================${NC}"
+}
+
+# Function to backup user database
+backup_user_db() {
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local backup_file="$BACKUP_DIR/user_db_$timestamp.json"
+    
+    cp "$USER_DB" "$backup_file"
+    
+    if [ $? -eq 0 ]; then
+        print_status "SUCCESS" "User database backed up: $backup_file"
+    else
+        print_status "ERROR" "Failed to backup user database"
+        return 1
+    fi
+}
+
+# Function to restore user database
+restore_user_db() {
+    local backup_file=$1
+    
+    if [ -z "$backup_file" ]; then
+        print_status "ERROR" "Backup file is required"
+        return 1
+    fi
+    
+    if [ ! -f "$backup_file" ]; then
+        print_status "ERROR" "Backup file not found: $backup_file"
+        return 1
+    fi
+    
+    cp "$backup_file" "$USER_DB"
+    
+    if [ $? -eq 0 ]; then
+        print_status "SUCCESS" "User database restored from: $backup_file"
+        restart_xray
+    else
+        print_status "ERROR" "Failed to restore user database"
+        return 1
+    fi
+}
+
+# Main user function
+main_user() {
+    init_user_db
+    
+    local option=$1
+    local param1=$2
+    local param2=$3
+    
+    case $option in
+        "add-xray")
+            add_xray_user "$param1" "$param2"
+            ;;
+        "remove-xray")
+            remove_xray_user "$param1"
+            ;;
+        "list-xray")
+            list_xray_users
+            ;;
+        "add-ssh")
+            add_ssh_user "$param1" "$param2"
+            ;;
+        "remove-ssh")
+            remove_ssh_user "$param1"
+            ;;
+        "list-ssh")
+            list_ssh_users
+            ;;
+        "generate-config")
+            generate_user_config "$param1" "$param2"
+            ;;
+        "backup")
+            backup_user_db
+            ;;
+        "restore")
+            restore_user_db "$param1"
+            ;;
+        *)
+            while true; do
+                show_user_menu
+                read -p "Choose an option: " choice
+                
+                case $choice in
+                    1) read -p "Enter user email: " email
+                       read -p "Enter user level [0]: " level
+                       add_xray_user "$email" "${level:-0}"
+                       read -p "Press Enter to continue..." ;;
+                    2) read -p "Enter user email to remove: " email
+                       remove_xray_user "$email"
+                       read -p "Press Enter to continue..." ;;
+                    3) list_xray_users
+                       read -p "Press Enter to continue..." ;;
+                    4) read -p "Enter SSH username: " username
+                       read -s -p "Enter SSH password: " password
+                       echo
+                       add_ssh_user "$username" "$password"
+                       read -p "Press Enter to continue..." ;;
+                    5) read -p "Enter SSH username to remove: " username
+                       remove_ssh_user "$username"
+                       read -p "Press Enter to continue..." ;;
+                    6) list_ssh_users
+                       read -p "Press Enter to continue..." ;;
+                    7) read -p "Enter user email: " email
+                       read -p "Enter protocol [vless]: " protocol
+                       generate_user_config "$email" "${protocol:-vless}"
+                       read -p "Press Enter to continue..." ;;
+                    8) backup_user_db
+                       read -p "Press Enter to continue..." ;;
+                    9) echo "Available backups:"
+                       ls -1t "$BACKUP_DIR"/user_db_*.json 2>/dev/null | head -5
+                       read -p "Enter backup file to restore: " backup_file
+                       if [ -n "$backup_file" ]; then
+                           restore_user_db "$backup_file"
+                       fi
+                       read -p "Press Enter to continue..." ;;
+                    10) break ;;
+                    *) print_status "ERROR" "Invalid option!"
+                       sleep 1 ;;
+                esac
+            done
             ;;
     esac
 }
 
-show_usage() {
-    cat << EOF
-VIP User Account Management with Expiry
-
-Usage: $0 <action> [username] [service] [expiry_days]
-
-Actions:
-  create <user> <service> [days]     Create user with expiry (ssh, xray, both)
-  delete <user>                      Delete user completely
-  update-expiry <user> <days>        Update user expiry (days or "never")
-  check-expiry                       Check for expired users
-  cleanup-expired                    Delete expired users
-  list                               List all users
-  show <user>                        Show user details
-  backup                             Backup user database
-  restore <file>                     Restore from backup
-  disable <user>                     Disable user account
-
-Examples:
-  $0 create john ssh 30             # SSH user expires in 30 days
-  $0 create jane xray never         # Xray user never expires
-  $0 create bob both 90             # Both services, 90 days
-  $0 update-expiry john 60          # Extend to 60 days
-  $0 check-expiry                   # Check for expired users
-  $0 cleanup-expired                # Delete expired users
-EOF
-}
-
-# Run main function if script is executed directly
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    main "$@"
+# Parse command line arguments
+if [ $# -gt 0 ]; then
+    case $1 in
+        -a|--add-xray)
+            main_user "add-xray" "$2" "$3"
+            exit 0
+            ;;
+        -r|--remove-xray)
+            main_user "remove-xray" "$2"
+            exit 0
+            ;;
+        -l|--list-xray)
+            main_user "list-xray"
+            exit 0
+            ;;
+        -A|--add-ssh)
+            main_user "add-ssh" "$2" "$3"
+            exit 0
+            ;;
+        -R|--remove-ssh)
+            main_user "remove-ssh" "$2"
+            exit 0
+            ;;
+        -L|--list-ssh)
+            main_user "list-ssh"
+            exit 0
+            ;;
+        -g|--generate-config)
+            main_user "generate-config" "$2" "$3"
+            exit 0
+            ;;
+        -b|--backup)
+            main_user "backup"
+            exit 0
+            ;;
+        -u|--restore)
+            main_user "restore" "$2"
+            exit 0
+            ;;
+        *)
+            echo "Usage: $0 [options]"
+            echo "Options:"
+            echo "  -a, --add-xray [email] [level]     Add Xray user"
+            echo "  -r, --remove-xray [email]          Remove Xray user"
+            echo "  -l, --list-xray                    List Xray users"
+            echo "  -A, --add-ssh [user] [pass]        Add SSH user"
+            echo "  -R, --remove-ssh [user]            Remove SSH user"
+            echo "  -L, --list-ssh                     List SSH users"
+            echo "  -g, --generate-config [email] [proto] Generate user config"
+            echo "  -b, --backup                       Backup user database"
+            echo "  -u, --restore [file]               Restore user database"
+            exit 1
+            ;;
+    esac
+else
+    # Start interactive mode if no arguments provided
+    main_user
 fi
