@@ -156,7 +156,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/dnsmasq -k --conf-file=/etc/vip-autoscript/config/slowdns.conf
+ExecStart=/usr/bin/dnsmasq -k --conf-file=/etc/vip-autoscript-/config/slowdns.conf
 Restart=always
 RestartSec=3
 
