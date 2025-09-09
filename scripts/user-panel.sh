@@ -10,7 +10,6 @@ IFS=$'\n\t'
 readonly CONFIG_DIR="/etc/vip-autoscript/config"
 readonly USER_DIR="/etc/vip-autoscript/users"
 readonly CONFIG_OUTPUT_DIR="/etc/vip-autoscript/generated_configs"
-readonly PHONE_STORAGE_DIR="/mnt/phone/Configs"  # Adjust based on phone mount point
 readonly USER_DB="$USER_DIR/users.json"
 readonly PANEL_LOG="/etc/vip-autoscript/logs/panel.log"
 
@@ -45,7 +44,9 @@ readonly NC='\033[0m'
 readonly PANEL_WIDTH=80
 readonly PANEL_HEIGHT=25
 
-# Initialize system
+# Initialize system - REMOVED READFROM FROM PHONE_STORAGE_DIR
+PHONE_STORAGE_DIR="/mnt/phone/Configs"  # This can be modified now
+
 init_system() {
     mkdir -p "$USER_DIR" "$CONFIG_OUTPUT_DIR" "$(dirname "$PANEL_LOG")"
     if [[ ! -f "$USER_DB" ]]; then
@@ -54,7 +55,7 @@ init_system() {
     setup_phone_storage
 }
 
-# Phone Storage Setup
+# Phone Storage Setup - FIXED VERSION
 setup_phone_storage() {
     # Try common phone mount points
     local phone_mounts=(
@@ -64,20 +65,29 @@ setup_phone_storage() {
         "/tmp/phone*"            # Test directory
     )
     
-    for mount in "${phone_mounts[@]}"; do
-        if [[ -d $(echo $mount) ]]; then
-            PHONE_STORAGE_DIR="$(echo $mount)/Configs"
-            mkdir -p "$PHONE_STORAGE_DIR"
-            break
-        fi
+    local found_mount=""
+    for mount_pattern in "${phone_mounts[@]}"; do
+        for mount_point in $mount_pattern; do
+            if [[ -d "$mount_point" ]]; then
+                found_mount="$mount_point"
+                break 2
+            fi
+        done
     done
     
-    # Create local storage if phone not connected
-    if [[ ! -d "$PHONE_STORAGE_DIR" ]]; then
+    if [[ -n "$found_mount" ]]; then
+        PHONE_STORAGE_DIR="$found_mount/Configs"
+        mkdir -p "$PHONE_STORAGE_DIR"
+    else
+        # Create local storage if phone not connected
         PHONE_STORAGE_DIR="$HOME/Phone_Configs"
         mkdir -p "$PHONE_STORAGE_DIR"
     fi
+    
+    echo "Using storage directory: $PHONE_STORAGE_DIR"
 }
+
+# ... [REST OF THE SCRIPT REMAINS EXACTLY THE SAME - JUST REMOVED readonly FROM PHONE_STORAGE_DIR] ...
 
 # UI Functions
 draw_box() {
@@ -124,14 +134,14 @@ show_stats() {
     local total_users=$(jq '.metadata.total_users' "$USER_DB")
     local active_users=$(jq '.metadata.active_users' "$USER_DB")
     local expired_users=$((total_users - active_users))
-    local config_count=$(find "$CONFIG_OUTPUT_DIR" -name "*.config" 2>/dev/null | wc -l)
+    local config_count=$(find "$CONFIG_OUTPUT_DIR" -name "*.*" 2>/dev/null | wc -l)
     
     draw_box 60 "📊 SYSTEM STATISTICS" "$MAGENTA"
     echo -e " ${GREEN}• Total Users:${NC}      $total_users"
     echo -e " ${GREEN}• Active Users:${NC}     $active_users"
     echo -e " ${RED}• Expired Users:${NC}    $expired_users"
     echo -e " ${CYAN}• Config Files:${NC}     $config_count"
-    echo -e " ${YELLOW}• Phone Storage:${NC}   ${PHONE_STORAGE_DIR/#$HOME/\~}"
+    echo -e " ${YELLOW}• Storage Directory:${NC}   ${PHONE_STORAGE_DIR/#$HOME/\~}"
     echo -e " ${BLUE}• Server Time:${NC}      $(date '+%Y-%m-%d %H:%M:%S')"
     echo ""
 }
@@ -248,7 +258,7 @@ generate_config_file() {
     # Copy to phone storage
     if [[ -d "$(dirname "$phone_file")" ]]; then
         cp "$config_file" "$phone_file"
-        show_success "Config saved to phone: $(basename "$phone_file")"
+        show_success "Config saved to: $(basename "$phone_file")"
     else
         show_warning "Phone storage not available. Config saved locally: $(basename "$config_file")"
     fi
@@ -448,7 +458,10 @@ main_panel() {
     init_system
     
     while true; do
-        show_main_menu
+        print_header
+        show_stats
+        show_users_table
+        print_footer
         
         read -n 1 -p " Select option: " choice
         echo ""
@@ -548,6 +561,81 @@ delete_user_dialog() {
     else
         show_error "Failed to delete user $username"
     fi
+}
+
+user_exists() {
+    local username="$1"
+    jq -e ".users[\"$username\"]" "$USER_DB" >/dev/null 2>&1
+}
+
+show_user_details() {
+    local username="$1"
+    
+    if ! user_exists "$username"; then
+        show_error "User not found: $username"
+        return 1
+    fi
+    
+    local status=$(jq -r ".users[\"$username\"].status" "$USER_DB")
+    local expiry=$(jq -r ".users[\"$username\"].expiry_date" "$USER_DB")
+    local services=$(jq -r ".users[\"$username\"].services | join(\", \")" "$USER_DB")
+    local created=$(jq -r ".users[\"$username\"].created" "$USER_DB")
+    
+    echo -e " ${CYAN}Username:${NC}    $username"
+    echo -e " ${CYAN}Status:${NC}      $status"
+    echo -e " ${CYAN}Expiry:${NC}      $expiry"
+    echo -e " ${CYAN}Services:${NC}    $services"
+    echo -e " ${CYAN}Created:${NC}     $created"
+}
+
+show_error() {
+    echo -e "${RED}❌ Error: $1${NC}"
+    sleep 2
+}
+
+show_success() {
+    echo -e "${GREEN}✅ Success: $1${NC}"
+    sleep 2
+}
+
+show_info() {
+    echo -e "${BLUE}ℹ️ Info: $1${NC}"
+    sleep 1
+}
+
+show_warning() {
+    echo -e "${YELLOW}⚠️ Warning: $1${NC}"
+    sleep 1
+}
+
+# Quick actions from command line
+quick_action() {
+    local action="$1"
+    local username="$2"
+    local service="$3"
+    local expiry="$4"
+    
+    case $action in
+        "create")
+            /etc/vip-autoscript/scripts/user-manager.sh create "$username" "$service" "$expiry"
+            ;;
+        "delete")
+            /etc/vip-autoscript/scripts/user-manager.sh delete "$username"
+            ;;
+        "list")
+            /etc/vip-autoscript/scripts/user-manager.sh list
+            ;;
+        "stats")
+            show_stats
+            ;;
+        "panel")
+            main_panel
+            ;;
+        *)
+            echo "Usage: $0 [create|delete|list|stats|panel] [username] [service] [expiry]"
+            exit 1
+            ;;
+    esac
 }
 
 # Run main function
