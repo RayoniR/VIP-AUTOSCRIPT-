@@ -3,6 +3,7 @@
 # Source the other scripts
 source ./wifi_host.sh
 source ./ip_host.sh
+SCRIPTS_DIR="$SCRIPT_DIR/scripts"
 
 while true; do
     echo "Select an option:"
