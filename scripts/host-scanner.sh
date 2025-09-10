@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Source the other scripts
-source ./wifi_host.sh
-source ./ip_host.sh
+source ./scripts/wifi_host.sh
+source ./scripts/ip_host.sh
 SCRIPTS_DIR="$SCRIPT_DIR/scripts"
 
 while true; do
