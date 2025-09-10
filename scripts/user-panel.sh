@@ -7,11 +7,11 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # Configuration
-readonly CONFIG_DIR="/etc/vip-autoscript/config"
-readonly USER_DIR="/etc/vip-autoscript/users"
+readonly CONFIG_DIR="/etc/vip-autoscript-/config"
+readonly USER_DIR="/etc/vip-autoscript-/users"
 readonly CONFIG_OUTPUT_DIR="/etc/vip-autoscript/generated_configs"
 readonly USER_DB="$USER_DIR/users.json"
-readonly PANEL_LOG="/etc/vip-autoscript/logs/panel.log"
+readonly PANEL_LOG="/etc/vip-autoscript-/logs/panel.log"
 
 # VPN Client Types and File Extensions
 declare -A VPN_EXTENSIONS=(
