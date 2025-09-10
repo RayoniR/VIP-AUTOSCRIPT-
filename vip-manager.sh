@@ -387,6 +387,7 @@ show_menu() {
     echo -e "24)  Advanced AI Maintenance"
     echo -e "25) Domain Management"
     echo -e "26) user panel" 
+    echo -e "27) host scanner"
     echo -e "${BLUE}========================================${NC}"
 }
 
@@ -494,6 +495,8 @@ while true; do
         25) sudo "$SCRIPTS_DIR/domain-manager.sh"
 ‎   read -p "Press Enter to continue..." ;;
         26) sudo "$SCRIPTS_DIR/user-panel.sh"
+‎   read -p "Press Enter to continue..." ;;
+        27) sudo "$SCRIPTS_DIR/host-scanner.sh"
 ‎   read -p "Press Enter to continue..." ;;
         *) print_status "ERROR" "Invalid option!"
            sleep 1 ;;
