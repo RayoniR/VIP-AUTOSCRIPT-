@@ -204,7 +204,7 @@ create_user_dialog() {
     fi
     
     # Create user
-    if /etc/vip-autoscript/scripts/user-manager.sh create "$username" "$service" "$expiry_days"; then
+    if /etc/vip-autoscript-/scripts/user-panel.sh create "$username" "$service" "$expiry_days"; then
         show_success "User $username created successfully!"
         
         # Generate config if requested
