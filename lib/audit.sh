@@ -22,11 +22,6 @@ AUDIT_MAX_EVENTS=1000000
 echo "DEBUG: LOG_DIR on audit.sh load: '${LOG_DIR:-NOT_SET}'" >&2
 echo "DEBUG: AUDIT_DB will be: '${LOG_DIR:-/var/log/vip-autoscript}/audit.db'" >&2
 
-readonly LOG_DIR="${LOG_DIR:-/var/log/vip-autoscript}"
-readonly AUDIT_DB="${LOG_DIR}/audit.db"
-
-echo "DEBUG: AUDIT_DB set to: '$AUDIT_DB'" >&2
-
 # Audit levels
 readonly AUDIT_LEVEL_DEBUG=0
 readonly AUDIT_LEVEL_INFO=1
