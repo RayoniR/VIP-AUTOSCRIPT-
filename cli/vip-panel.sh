@@ -6,10 +6,10 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # Load configuration and libraries
-readonly PANEL_ROOT="/etc/vip-autoscript-"
-readonly CONFIG_DIR="${PANEL_ROOT}/config"
-readonly LIB_DIR="${PANEL_ROOT}/lib"
-readonly SCRIPTS_DIR="${PANEL_ROOT}/scripts"
+PANEL_ROOT="/etc/vip-autoscript-"
+CONFIG_DIR="${PANEL_ROOT}/config"
+LIB_DIR="${PANEL_ROOT}/lib"
+SCRIPTS_DIR="${PANEL_ROOT}/scripts"
 
 source "${CONFIG_DIR}/panel.conf"
 source "${LIB_DIR}/utils.sh"
