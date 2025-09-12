@@ -6,7 +6,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # Audit configuration
-readonly AUDIT_DB="${LOG_DIR}/audit.db"
+AUDIT_DB="${LOG_DIR}/audit.db"
 readonly AUDIT_RETENTION_DAYS=365
 readonly AUDIT_ROTATE_SIZE=10485760
 readonly AUDIT_MAX_EVENTS=1000000
