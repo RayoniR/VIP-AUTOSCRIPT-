@@ -204,7 +204,7 @@ create_user_dialog() {
     fi
     
     # Create user
-    if /etc/vip-autoscript-/scripts/user-panel.sh create "$username" "$service" "$expiry_days"; then
+    if /etc/vip-autoscript-/scripts/user-managers.sh create "$username" "$service" "$expiry_days"; then
         show_success "User $username created successfully!"
         
         # Generate config if requested
@@ -523,7 +523,7 @@ edit_user_dialog() {
         *) return 1 ;;
     esac
     
-    if /etc/vip-autoscript-/scripts/user-panel.sh update-expiry "$username" "$new_expiry"; then
+    if /etc/vip-autoscript-/scripts/user-managers.sh update-expiry "$username" "$new_expiry"; then
         show_success "User $username updated successfully!"
     else
         show_error "Failed to update user $username"
@@ -552,7 +552,7 @@ delete_user_dialog() {
         return 0
     fi
     
-    if /etc/vip-autoscript-/scripts/user-manager.sh delete "$username"; then
+    if /etc/vip-autoscript-/scripts/user-managers.sh delete "$username"; then
         # Also delete config files
         find "$CONFIG_OUTPUT_DIR" -name "${username}_*" -delete
         find "$PHONE_STORAGE_DIR" -name "${username}_*" -delete 2>/dev/null || true
@@ -617,13 +617,13 @@ quick_action() {
     
     case $action in
         "create")
-            /etc/vip-autoscript-/scripts/user-manager.sh create "$username" "$service" "$expiry"
+            /etc/vip-autoscript-/scripts/user-managers.sh create "$username" "$service" "$expiry"
             ;;
         "delete")
-            /etc/vip-autoscript-/scripts/user-manager.sh delete "$username"
+            /etc/vip-autoscript-/scripts/user-managers.sh delete "$username"
             ;;
         "list")
-            /etc/vip-autoscript-/scripts/user-manager.sh list
+            /etc/vip-autoscript-/scripts/user-managers.sh list
             ;;
         "stats")
             show_stats
