@@ -1,4 +1,4 @@
-I-9#!/bin/bash
+#!/bin/bash
 
 # VIP-Autoscript Manager - Production Ready
 # Complete service management with monitoring, logging, and backup
