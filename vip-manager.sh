@@ -388,7 +388,7 @@ show_menu() {
     echo -e "25) Domain Management"
     echo -e "26) user panel" 
     echo -e "27) host scanner"
-    echo -e "28) 😁 
+    echo -e "28) LOVE 
     echo -e "${BLUE}========================================${NC}"
 }
 
