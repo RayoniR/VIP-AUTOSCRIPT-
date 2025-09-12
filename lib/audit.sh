@@ -5,7 +5,11 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Configuration variables (should be set by main script or defaults)
+# Configuration variables (should be set by main script or defaut 
+# At the top of audit.sh, add:
+readonly LOG_DIR="${LOG_DIR:-/var/log/vip-autoscript}"
+readonly AUDIT_DB="${LOG_DIR}/audit.db"
+
 readonly LOG_DIR="${LOG_DIR:-/var/log/vip-autoscript}"
 readonly SESSION_FILE="${SESSION_FILE:-/tmp/vip-session.id}"
 readonly BACKUP_DIR="${BACKUP_DIR:-/var/backups/vip-autoscript}"
