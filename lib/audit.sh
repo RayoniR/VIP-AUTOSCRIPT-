@@ -18,10 +18,6 @@ AUDIT_RETENTION_DAYS=365
 AUDIT_ROTATE_SIZE=10485760
 AUDIT_MAX_EVENTS=1000000
 
-# At the very top of audit.sh, add:
-echo "DEBUG: LOG_DIR on audit.sh load: '${LOG_DIR:-NOT_SET}'" >&2
-echo "DEBUG: AUDIT_DB will be: '${LOG_DIR:-/var/log/vip-autoscript}/audit.db'" >&2
-
 # Audit levels
 readonly AUDIT_LEVEL_DEBUG=0
 readonly AUDIT_LEVEL_INFO=1
