@@ -5,21 +5,27 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Configuration variables (should be set by main script or defaut 
-# At the top of audit.sh, add:
-readonly LOG_DIR="${LOG_DIR:-/var/log/vip-autoscript}"
-readonly AUDIT_DB="${LOG_DIR}/audit.db"
-
+# Configuration variables (should be set by main script or defalts 
 readonly LOG_DIR="${LOG_DIR:-/var/log/vip-autoscript}"
 readonly SESSION_FILE="${SESSION_FILE:-/tmp/vip-session.id}"
 readonly BACKUP_DIR="${BACKUP_DIR:-/var/backups/vip-autoscript}"
 readonly EXIT_FAILURE="${EXIT_FAILURE:-1}"
 
 # Audit configuration
+readonly LOG_DIR="${LOG_DIR:-/var/log/vip-autoscript}"
 readonly AUDIT_DB="${LOG_DIR}/audit.db"
 readonly AUDIT_RETENTION_DAYS=365
 readonly AUDIT_ROTATE_SIZE=10485760
 readonly AUDIT_MAX_EVENTS=1000000
+
+# At the very top of audit.sh, add:
+echo "DEBUG: LOG_DIR on audit.sh load: '${LOG_DIR:-NOT_SET}'" >&2
+echo "DEBUG: AUDIT_DB will be: '${LOG_DIR:-/var/log/vip-autoscript}/audit.db'" >&2
+
+readonly LOG_DIR="${LOG_DIR:-/var/log/vip-autoscript}"
+readonly AUDIT_DB="${LOG_DIR}/audit.db"
+
+echo "DEBUG: AUDIT_DB set to: '$AUDIT_DB'" >&2
 
 # Audit levels
 readonly AUDIT_LEVEL_DEBUG=0
